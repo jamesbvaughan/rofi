@@ -86,6 +86,8 @@ void rofi_view_restart ( RofiViewState *state );
  */
 void rofi_view_update ( RofiViewState *state );
 
+gboolean rofi_view_trigger_action ( RofiViewState *state, KeyBindingAction action );
+
 /**
  * @param display Connection to the X server.
  * @param state The handle to the view
