@@ -1265,39 +1265,8 @@ void rofi_view_setup_fake_transparency ( RofiViewState *state )
     }
 }
 
-static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t *ev, xkb_stuff *xkb )
+static void rofi_view_handle_keypress ( RofiViewState *state, xkb_stuff *xkb, xcb_key_press_event_t *xkpe )
 {
-    switch ( ev->response_type & ~0x80 )
-    {
-    case XCB_FOCUS_IN:
-        if ( ( state->menu_flags & MENU_NORMAL_WINDOW ) == 0 ) {
-            take_keyboard ( state->window );
-        }
-        break;
-    case XCB_FOCUS_OUT:
-        if ( ( state->menu_flags & MENU_NORMAL_WINDOW ) == 0 ) {
-            release_keyboard ( );
-        }
-        break;
-    case XCB_MOTION_NOTIFY:
-    {
-        xcb_motion_notify_event_t *xme = (xcb_motion_notify_event_t *) ev;
-        if ( xme->event_x >= state->scrollbar->widget.x && xme->event_x < ( state->scrollbar->widget.x + state->scrollbar->widget.w ) ) {
-            state->selected = scrollbar_clicked ( state->scrollbar, xme->event_y );
-            state->update   = TRUE;
-        }
-        break;
-    }
-    case XCB_BUTTON_PRESS:
-        rofi_view_mouse_navigation ( state, (xcb_button_press_event_t *) ev );
-        break;
-    // Paste event.
-    case XCB_SELECTION_NOTIFY:
-        rofi_view_paste ( state, (xcb_selection_notify_event_t *) ev );
-        break;
-    case XCB_KEY_PRESS:
-    {
-        xcb_key_press_event_t *xkpe = (xcb_key_press_event_t *) ev;
         xcb_keysym_t          key;
         char                  pad[32];
         int                   len = 0;
@@ -1322,7 +1291,7 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                     break;
                 }
                 if ( ( key == XKB_KEY_NoSymbol ) && ( len == 0 ) ) {
-                    break;
+                    return;
                 }
             }
         }
@@ -1347,27 +1316,27 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
             }
             if ( abe_test_action ( SCREENSHOT, modstate, key ) ) {
                 menu_capture_screenshot ( );
-                break;
+                return;
             }
             if ( abe_test_action ( TOGGLE_SORT, modstate, key ) ) {
                 config.levenshtein_sort = !config.levenshtein_sort;
                 state->refilter         = TRUE;
                 state->update           = TRUE;
                 textbox_text ( state->case_indicator, get_matching_state () );
-                break;
+                return;
             }
             else if ( abe_test_action ( MODE_PREVIOUS, modstate, key ) ) {
                 state->retv              = MENU_PREVIOUS;
                 ( state->selected_line ) = 0;
                 state->quit              = TRUE;
-                break;
+                return;
             }
             // Menu navigation.
             else if ( abe_test_action ( MODE_NEXT, modstate, key ) ) {
                 state->retv              = MENU_NEXT;
                 ( state->selected_line ) = 0;
                 state->quit              = TRUE;
-                break;
+                return;
             }
             // Toggle case sensitivity.
             else if ( abe_test_action ( TOGGLE_CASE_SENSITIVITY, modstate, key ) ) {
@@ -1376,7 +1345,7 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                 state->refilter          = TRUE;
                 state->update            = TRUE;
                 textbox_text ( state->case_indicator, get_matching_state () );
-                break;
+                return;
             }
             // Special delete entry command.
             else if ( abe_test_action ( DELETE_ENTRY, modstate, key ) ) {
@@ -1384,7 +1353,7 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                     ( state->selected_line ) = state->line_map[state->selected];
                     state->retv              = MENU_ENTRY_DELETE;
                     state->quit              = TRUE;
-                    break;
+                    return;
                 }
             }
             for ( unsigned int a = CUSTOM_1; a <= CUSTOM_19; a++ ) {
@@ -1395,17 +1364,17 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                     }
                     state->retv = MENU_QUICK_SWITCH | ( ( a - CUSTOM_1 ) & MENU_LOWER_MASK );
                     state->quit = TRUE;
-                    break;
+                    return;
                 }
             }
             if ( rofi_view_keyboard_navigation ( state, key, modstate ) ) {
-                break;
+                return;
             }
         }
         {
             // Skip if we detected key before.
             if ( state->quit ) {
-                break;
+                return;
             }
 
             int rc = textbox_keypress ( state->text, pad, len, modstate, key );
@@ -1437,8 +1406,41 @@ static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t 
                 state->update = TRUE;
             }
         }
+}
+
+static void rofi_view_mainloop_iter ( RofiViewState *state, xcb_generic_event_t *ev, xkb_stuff *xkb )
+{
+    switch ( ev->response_type & ~0x80 )
+    {
+    case XCB_FOCUS_IN:
+        if ( ( state->menu_flags & MENU_NORMAL_WINDOW ) == 0 ) {
+            take_keyboard ( state->window );
+        }
+        break;
+    case XCB_FOCUS_OUT:
+        if ( ( state->menu_flags & MENU_NORMAL_WINDOW ) == 0 ) {
+            release_keyboard ( );
+        }
+        break;
+    case XCB_MOTION_NOTIFY:
+    {
+        xcb_motion_notify_event_t *xme = (xcb_motion_notify_event_t *) ev;
+        if ( xme->event_x >= state->scrollbar->widget.x && xme->event_x < ( state->scrollbar->widget.x + state->scrollbar->widget.w ) ) {
+            state->selected = scrollbar_clicked ( state->scrollbar, xme->event_y );
+            state->update   = TRUE;
+        }
         break;
     }
+    case XCB_BUTTON_PRESS:
+        rofi_view_mouse_navigation ( state, (xcb_button_press_event_t *) ev );
+        break;
+    // Paste event.
+    case XCB_SELECTION_NOTIFY:
+        rofi_view_paste ( state, (xcb_selection_notify_event_t *) ev );
+        break;
+    case XCB_KEY_PRESS:
+        rofi_view_handle_keypress ( state, xkb, (xcb_key_press_event_t *) ev );
+        break;
     }
     // Update if requested.
     if ( state->refilter ) {
